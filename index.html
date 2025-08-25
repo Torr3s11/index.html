@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escape the Square</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #141e30, #243b55);
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+      color: #fff;
+    }
+
+    #gameArea {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    #square {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      background: red;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: 0.2s;
+      box-shadow: 0 0 15px rgba(255,0,0,0.7);
+      display: none;
+    }
+
+    #score, #timer {
+      position: absolute;
+      top: 20px;
+      font-size: 1.3rem;
+      font-weight: bold;
+    }
+
+    #score { left: 20px; }
+    #timer { right: 20px; }
+
+    .centerScreen {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+
+    #startScreen, #gameOver {
+      display: none;
+    }
+
+    h1 {
+      margin-bottom: 15px;
+    }
+
+    input {
+      padding: 10px;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      background: #ff4757;
+      color: #fff;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: #ff6b81;
+    }
+
+    #ranking {
+      margin-top: 15px;
+      font-size: 1rem;
+      text-align: left;
+    }
+
+    #ranking h3 {
+      margin-bottom: 5px;
+    }
+
+    #ranking ol {
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameArea">
+    <div id="score">Pontos: 0</div>
+    <div id="timer">Tempo: 30</div>
+    <div id="square"></div>
+
+    <!-- Tela inicial -->
+    <div id="startScreen" class="centerScreen" style="display:block;">
+      <h1>Escape the Square 🎮</h1>
+      <p>Digite seu nome para começar:</p>
+      <input type="text" id="playerName" placeholder="Seu nome">
+      <br>
+      <button id="startButton">Iniciar Jogo</button>
+    </div>
+
+    <!-- Tela de game over -->
+    <div id="gameOver" class="centerScreen">
+      <h1>Fim de jogo!</h1>
+      <p id="finalScore"></p>
+      <button onclick="restartGame()">Jogar de novo</button>
+      <div id="ranking">
+        <h3>🏆 Ranking dos Melhores</h3>
+        <ol id="rankingList"></ol>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const square = document.getElementById("square");
+    const scoreDisplay = document.getElementById("score");
+    const timerDisplay = document.getElementById("timer");
+    const gameOverScreen = document.getElementById("gameOver");
+    const finalScore = document.getElementById("finalScore");
+    const startScreen = document.getElementById("startScreen");
+    const rankingList = document.getElementById("rankingList");
+    const gameArea = document.getElementById("gameArea");
+    const startButton = document.getElementById("startButton");
+
+    let score = 0;
+    let timeLeft = 30;
+    let gameInterval;
+    let timerInterval;
+    let speed = 1000;
+    let player = "";
+    let gameActive = false;
+
+    // Carregar ranking salvo
+    function loadRanking() {
+      return JSON.parse(localStorage.getItem("ranking")) || [];
+    }
+
+    // Salvar novo score no ranking (substitui o recorde do jogador, se houver)
+    function saveScore(name, pontos) {
+      let ranking = loadRanking();
+
+      // Verificar se o jogador já tem um recorde no ranking
+      let playerRecord = ranking.find(r => r.name === name);
+
+      if (playerRecord) {
+        // Se o jogador já tem um recorde, substitui o antigo pelo novo
+        playerRecord.pontos = Math.max(playerRecord.pontos, pontos);
+      } else {
+        // Caso o jogador não tenha recorde, adiciona ao ranking
+        ranking.push({ name, pontos });
+      }
+
+      // Remover jogadores duplicados (mesmo nome)
+      ranking = ranking.filter((value, index, self) =>
+        index === self.findIndex((t) => (
+          t.name === value.name
+        ))
+      );
+
+      // Ordena e mantém só os top 5
+      ranking.sort((a, b) => b.pontos - a.pontos);
+      ranking = ranking.slice(0, 5);
+
+      localStorage.setItem("ranking", JSON.stringify(ranking));
+    }
+
+    // Atualizar lista visual do ranking
+    function showRanking() {
+      const ranking = loadRanking();
+      rankingList.innerHTML = "";
+      ranking.forEach(r => {
+        let li = document.createElement("li");
+        li.textContent = `${r.name} — ${r.pontos} pts`;
+        rankingList.appendChild(li);
+      });
+    }
+
+    // Iniciar o jogo
+    function startGame() {
+      const inputName = document.getElementById("playerName").value.trim();
+      if (!inputName) {
+        alert("Digite seu nome antes de começar!");
+        return;
+      }
+      player = inputName;
+      startScreen.style.display = "none";
+      square.style.display = "block";
+      gameActive = true;
+      score = 0;
+      timeLeft = 30;
+      speed = 1000;
+      scoreDisplay.textContent = "Pontos: 0";
+      timerDisplay.textContent = "Tempo: 30";
+      moveSquare();
+      gameInterval = setInterval(moveSquare, speed);
+      timerInterval = setInterval(updateTimer, 1000);
+    }
+
+    // Mover o quadrado
+    function moveSquare() {
+      const areaWidth = gameArea.clientWidth - 60; // Subtrai a largura do quadrado
+      const areaHeight = gameArea.clientHeight - 60; // Subtrai a altura do quadrado
+      const x = Math.random() * areaWidth;
+      const y = Math.random() * areaHeight;
+      square.style.left = `${x}px`;
+      square.style.top = `${y}px`;
+
+      // Mudar cor aleatória
+      square.style.background = `hsl(${Math.random() * 360}, 80%, 50%)`;
+      square.style.boxShadow = `0 0 20px ${square.style.background}`;
+    }
+
+    // Ação ao clicar no quadrado
+    square.addEventListener("click", () => {
+      if (!gameActive) return; // Ignora cliques fora do jogo
+      score++;
+      scoreDisplay.textContent = "Pontos: " + score;
+
+      // Se a velocidade já estiver abaixo de um limite, não acelere mais
+      speed = Math.max(300, speed - 50);
+
+      // Limpar o intervalo anterior e reiniciar com a nova velocidade
+      clearInterval(gameInterval);
+      gameInterval = setInterval(moveSquare, speed);
+      moveSquare(); // Garantir que o quadrado se mova imediatamente
+    });
+
+    // Atualizar o tempo do jogo
+    function updateTimer() {
+      timeLeft--;
+      timerDisplay.textContent = "Tempo: " + timeLeft;
+      if (timeLeft <= 0) {
+        endGame();
+      }
+    }
+
+    // Final do jogo
+    function endGame() {
+      gameActive = false;
+      clearInterval(gameInterval);
+      clearInterval(timerInterval);
+      square.style.display = "none";
+      gameOverScreen.style.display = "block";
+      finalScore.textContent = `${player}, sua pontuação: ${score}`;
+      saveScore(player, score);
+      showRanking();
+    }
+
+    // Reiniciar o jogo
+    function restartGame() {
+      gameOverScreen.style.display = "none";
+      startScreen.style.display = "block";
+    }
+
+    // Chama a função de iniciar o jogo
+    startButton.addEventListener("click", startGame);
+  </script>
+</body>
+</html>
